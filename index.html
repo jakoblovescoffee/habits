@@ -418,8 +418,8 @@ let state = {
   log: {},
   view: 'today',
   editingId: null,
+  editDraft: {},
   showAddForm: false,
-  tooltip: null, // { habitId, weekKey }
   newHabit: { label: '', type: 'boolean', goal: '', weeklyTarget: 7 },
 };
 
@@ -735,7 +735,7 @@ function buildDaysGrid(target, prefix) {
     <label class="form-label">Days per week target</label>
     <div class="days-grid">
       ${days.map(d => `
-        <button class="day-btn ${target >= d ? 'active' : ''}" data-days="${d}" data-prefix="${prefix}">${d}</button>
+        <button class="day-btn ${target === d ? 'active' : ''}" data-days="${d}" data-prefix="${prefix}">${d}</button>
       `).join('')}
     </div>
   `;
@@ -745,8 +745,8 @@ function buildEditForm(habit) {
   return `
     <div class="form-card" id="edit-form-${habit.id}">
       <div class="form-title">Edit habit</div>
-      <input class="form-input" id="edit-label-${habit.id}" value="${habit.label}" placeholder="Habit name" />
-      ${buildDaysGrid(habit.weeklyTarget || 7, `edit-${habit.id}`)}
+      <input class="form-input" id="edit-label-${habit.id}" value="${state.editDraft.label !== undefined ? state.editDraft.label : habit.label}" placeholder="Habit name" />
+      ${buildDaysGrid(state.editDraft.weeklyTarget !== undefined ? state.editDraft.weeklyTarget : (habit.weeklyTarget || 7), `edit-${habit.id}`)}
       ${habit.type === 'quantity' ? `<input class="form-input" id="edit-goal-${habit.id}" type="number" value="${habit.goal||1}" placeholder="Daily goal" />` : ''}
       <div class="form-actions">
         <button class="btn-primary" data-save="${habit.id}">Save</button>
@@ -808,7 +808,12 @@ function bindEvents() {
 
   // Edit
   document.querySelectorAll('[data-edit]').forEach(el => {
-    el.addEventListener('click', () => { state.editingId = el.dataset.edit; render(); });
+    el.addEventListener('click', () => {
+      const h = state.habits.find(h => h.id === el.dataset.edit);
+      state.editingId = el.dataset.edit;
+      state.editDraft = { weeklyTarget: h ? (h.weeklyTarget || 7) : 7 };
+      render();
+    });
   });
 
   // Save edit
@@ -817,12 +822,7 @@ function bindEvents() {
       const id = el.dataset.save;
       const labelEl = document.getElementById(`edit-label-${id}`);
       const goalEl = document.getElementById(`edit-goal-${id}`);
-      const activeDay = document.querySelector(`[data-prefix="edit-${id}"].day-btn.active:last-of-type`);
-      // get highest active day btn
-      let weeklyTarget = 7;
-      document.querySelectorAll(`[data-prefix="edit-${id}"].day-btn`).forEach(btn => {
-        if (btn.classList.contains('active')) weeklyTarget = parseInt(btn.dataset.days);
-      });
+      const weeklyTarget = state.editDraft.weeklyTarget || 7;
       state.habits = state.habits.map(h => h.id === id ? {
         ...h,
         label: labelEl ? labelEl.value.trim() || h.label : h.label,
@@ -830,13 +830,14 @@ function bindEvents() {
         weeklyTarget,
       } : h);
       state.editingId = null;
+      state.editDraft = {};
       saveHabits(); render();
     });
   });
 
   // Cancel edit
   document.querySelectorAll('[data-cancel-edit]').forEach(el => {
-    el.addEventListener('click', () => { state.editingId = null; render(); });
+    el.addEventListener('click', () => { state.editingId = null; state.editDraft = {}; render(); });
   });
 
   // Delete
@@ -881,8 +882,17 @@ function bindEvents() {
         if (goalEl) state.newHabit.goal = goalEl.value;
         state.newHabit.weeklyTarget = val;
         render();
+      } else {
+        // editing an existing habit
+        state.editDraft.weeklyTarget = val;
+        // preserve current label/goal inputs before re-render
+        const id = state.editingId;
+        const labelEl = document.getElementById(`edit-label-${id}`);
+        const goalEl = document.getElementById(`edit-goal-${id}`);
+        if (labelEl) state.editDraft.label = labelEl.value;
+        if (goalEl) state.editDraft.goal = goalEl.value;
+        render();
       }
-      // edit prefix handled by save
     });
   });
 
